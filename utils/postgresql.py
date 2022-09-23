@@ -22,7 +22,7 @@ class Database:
         username VARCHAR(100),
         full_name_tg VARCHAR(100),
         full_name VARCHAR(100),
-        passed_homeworks INT DEFAULT 0 NOT NULL,
+        passed_lessons INT DEFAULT 0 NOT NULL,
         current_lesson_id INT DEFAULT 1 NOT NULL,
         leave BOOLEAN DEFAULT FALSE,
         PRIMARY KEY (chat_id)
@@ -53,7 +53,10 @@ class Database:
         
         CREATE TABLE IF NOT EXISTS Answers (
         id SERIAL NOT NULL,
-        text VARCHAR,
+        text VARCHAR DEFAULT NULL,
+        video VARCHAR DEFAULT NULL,
+        photo VARCHAR DEFAULT NULL,
+        document VARCHAR DEFAULT NULL,
         student_chat_id INT,
         homework_id INT,
         checked BOOLEAN DEFAULT FALSE,
@@ -74,18 +77,42 @@ class Database:
         """
         await self.pool.execute(sql, chat_id, username, full_name_tg, full_name)
 
-    async def add_answer(self, chat_id, text, homework_id):
+    async def add_answer(self, chat_id, text, photo, video, document, homework_id):
         sql = """
-        INSERT INTO Answers (student_chat_id, text, homework_id) VALUES ($1, $2, $3);
+        INSERT INTO Answers (student_chat_id, text, photo, video, document, homework_id) VALUES ($1, $2, $3, $4, $5, $6);
         """
 
-        await self.pool.execute(sql, chat_id, text, homework_id)
+        await self.pool.execute(sql, chat_id, text, photo, video, document, homework_id)
+
+    async def add_lesson(self, title, text, homework_id):
+        sql = f"""
+        INSERT INTO Lessons (title, text, homework_id) VALUES ($1, $2, $3);
+        """
+        await self.pool.execute(sql, title, text, homework_id)
+
+    async def add_homework(self, text):
+        sql = f"""
+        INSERT INTO Homeworks (text) VALUES ($1);
+        """
+        await self.pool.execute(sql, text)
 
     async def get_user(self, table_name, chat_id):
         sql = f"""
         SELECT * FROM {table_name} WHERE chat_id = $1;
         """
         return await self.pool.fetchrow(sql, chat_id)
+
+    async def get_lesson(self, lesson_id):
+        sql = """
+        SELECT * FROM Lessons WHERE id = $1;
+        """
+        return await self.pool.fetchrow(sql, lesson_id)
+
+    async def get_answer(self, chat_id):
+        sql = f"""
+        SELECT * FROM Answers WHERE student_chat_id = $1;
+        """
+        return await self.pool.fetchrow(chat_id)
 
     async def get_users(self, table_name):
         sql = f"""
@@ -114,25 +141,17 @@ class Database:
 
     async def get_current_lesson(self, chat_id):
         sql = """
-        SELECT * FROM Students 
-        JOIN Lessons ON Students.current_lesson_id = Lessons.id
+        SELECT Lessons.id, Lessons.title, Lessons.text, Lessons.homework_id FROM Lessons
+        JOIN Students ON Lessons.id = Students.current_lesson_id
         WHERE Students.chat_id = $1;
         """
         return await self.pool.fetchrow(sql, chat_id)
 
     async def get_current_homework(self, chat_id):
         sql = """
-        SELECT * FROM Homeworks 
+        SELECT Homeworks.id, Homeworks.text FROM Homeworks 
         JOIN Lessons ON Homeworks.id = Lessons.homework_id
         WHERE Lessons.id = (SELECT current_lesson_id FROM Students WHERE chat_id = $1);
-        """
-        return await self.pool.fetchrow(sql, chat_id)
-
-    async def get_answer(self, chat_id):
-        sql = """
-        SELECT * FROM Answers
-        JOIN Students ON Answers.student_chat_id = Students.chat_id
-        WHERE Students.chat_id = $1;
         """
         return await self.pool.fetchrow(sql, chat_id)
 
@@ -152,10 +171,28 @@ class Database:
         """
         return await self.pool.execute(sql, chat_id, leave)
 
+    async def update_homework(self, text, homework_id):
+        sql = """
+        UPDATE Homeworks
+        SET text = $1
+        WHERE id = $2
+        """
+        return await self.pool.execute(sql, text, homework_id)
+
+    async def update_lesson(self, lesson_id, title, text, homework_id):
+        sql = """
+        UPDATE Lessons 
+        SET title = $1,
+        text = $2, 
+        homework_id = $3
+        WHERE id = $4;
+        """
+        return await self.pool.execute(sql, title, text, homework_id, lesson_id)
+
     async def pass_homework(self, chat_id):
         sql = """
         UPDATE Students 
-        SET passed_homeworks = passed_homeworks + 1
+        SET passed_lessons = passed_lessons + 1
         WHERE chat_id = $1;
         """
         await self.pool.execute(sql, chat_id)

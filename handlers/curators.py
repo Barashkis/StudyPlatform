@@ -24,6 +24,24 @@ async def students_list_message():
     return text
 
 
+@dp.callback_query_handler(curator_cd.filter(feature="faq"))
+async def faq(call: types.CallbackQuery):
+    await call.answer()
+    await call.message.edit_text("❓ FAQ\n\n"
+                                 "Как работать с чат-ботом\n\n"
+                                 f"Чтобы увидеть, кто находится в вашей группе, нажмите на кнопку {hbold('«Моя группа»')}. "
+                                 "Здесь отобразится список ваших студентов и их контакты, а также сведения, на каком "
+                                 "уроке находятся пользователи\n\n"
+                                 "Чтобы связаться с одним или всеми студентами Вашей группы, нажмите на кнопку "
+                                 f"{hbold('«Связаться со студентами»')}. Далее выберите одного "
+                                 f"студента или всех студентов, чтобы отправить сообщение в чат-боте\n\n"
+                                 "Студенты присылают вам домашние задания на проверку. Чтобы приступить к проверке "
+                                 f"заданий, нажмите на кнопку {hbold('«Проверка заданий»')}. "
+                                 f"Укажите номер задания, которое хотите "
+                                 "проверить, и отправьте обратную связь по домашнему заданию\n\n",
+                                 reply_markup=curator_kb)
+
+
 @dp.callback_query_handler(curator_cd.filter(feature="students_list"))
 async def group_list(call: types.CallbackQuery, state: FSMContext):
     text = await students_list_message()
@@ -44,6 +62,8 @@ async def group_list(call: types.CallbackQuery, state: FSMContext):
 
 @dp.message_handler(state="choose_students_info")
 async def show_students(message: types.Message, state: FSMContext):
+    await state.reset_state(with_data=False)
+
     text = message.text
     selected_id = set(text.split())
     students = await db.get_users("Students")
@@ -58,7 +78,7 @@ async def show_students(message: types.Message, state: FSMContext):
 
             result_message.append(f"{student[0]}. {student[1]['full_name']}\n"
                                   f"Сейчас изучает урок №{lesson['id']} - \'{lesson['title']}\'\n"
-                                  f"Прогресс - {int(student[1]['passed_homeworks'] / len(lessons) * 100)}%\n"
+                                  f"Прогресс - {int(student[1]['passed_lessons'] / len(lessons) * 100)}%\n"
                                   f"Имя в Телеграме - {student[1]['full_name_tg']}\n")
 
         result_message.insert(0, "📋 ИНФОРМАЦИЯ О СТУДЕНТАХ\n")
@@ -76,7 +96,7 @@ async def show_students(message: types.Message, state: FSMContext):
 
                 result_message.append(f"{student_id[0]}. {students[student_id[1] - 1]['full_name']}\n"
                                       f"Сейчас изучает урок №{lesson['id']} - \'{lesson['title']}\'\n"
-                                      f"Прогресс - {int(students[student_id[1] - 1]['passed_homeworks'] / len(lessons) * 100)}%\n"
+                                      f"Прогресс - {int(students[student_id[1] - 1]['passed_lessons'] / len(lessons) * 100)}%\n"
                                       f"Имя в Телеграме - {students[student_id[1] - 1]['full_name_tg']}\n")
 
             result_message.insert(0, "📋 ИНФОРМАЦИЯ О СТУДЕНТАХ\n")
@@ -85,8 +105,6 @@ async def show_students(message: types.Message, state: FSMContext):
                                  reply_markup=curator_kb)
         else:
             raise ValueError
-
-    await state.finish()
 
 
 @dp.callback_query_handler(curator_cd.filter(feature="connect_student"))
@@ -158,7 +176,7 @@ async def send_message_to_student(call: types.CallbackQuery, state: FSMContext):
     await state.set_state("choose_students_connect")
     data = await state.get_data()
     to_connect = data["to_connect"]
-    await state.finish()
+    await state.reset_state(with_data=False)
 
     students = await db.get_users("Students")
     for student_id in to_connect:
@@ -176,15 +194,15 @@ async def send_message_to_student(call: types.CallbackQuery, state: FSMContext):
 
 @dp.callback_query_handler(curator_cd.filter(feature="check_tasks"))
 async def show_homeworks_to_check(call: types.CallbackQuery):
+    await call.answer()
+
     kb = await homeworks_to_check_kb()
 
     if kb["inline_keyboard"]:
-        await call.answer()
         await call.message.edit_text("На текущий момент имеются ответы на следующие домашние задания. "
                                      "Выберете домашнее задание, ответы на которое Вы хотите проверить",
                                      reply_markup=kb)
     else:
-        await call.answer()
         await call.message.edit_text("Доступных для проверки ответов на домашние задания пока нет...",
                                      reply_markup=curator_kb)
 
@@ -230,10 +248,24 @@ async def select_student_to_homework_feedback(message: types.Message, state: FSM
     answer = answers[answer_id - 1]
     chat_id = answer["student_chat_id"]
     student = await db.get_user("Students", chat_id)
-    await message.answer(f"ОТВЕТ СТУДЕНТА - {student['full_name']}\n\n"
-                         f"{answer['text']}")
-    await message.answer("Напишите сообщение по этому ответу")
 
+    answer_text = f"ОТВЕТ СТУДЕНТА - {student['full_name']}\n\n"
+    if answer["text"]:
+        answer_text += answer["text"]
+
+    if answer["video"]:
+        await message.answer_video(video=answer["video"],
+                                   caption=answer_text)
+    elif answer["photo"]:
+        await message.answer_photo(photo=answer["photo"],
+                                   caption=answer_text)
+    elif answer["document"]:
+        await message.answer_document(document=answer["document"],
+                                      caption=answer_text)
+    else:
+        await message.answer(answer_text)
+
+    await message.answer("Напишите сообщение по этому ответу")
     await state.set_state("feedback")
 
 
@@ -259,23 +291,31 @@ async def send_message_to_student(call: types.CallbackQuery, state: FSMContext):
 
     await state.set_state("feedback")
     data = await state.get_data()
-    text = f"📧 ТВОЙ ОТВЕТ НА ДОМАШНЕЕ ЗАДАНИЕ №{homework_id} ПРОВЕРИЛИ\n\n" \
+    text = f"📧 РЕЦЕНЗИЯ НА ДОМАШНЕЕ ЗАДАНИЕ №{homework_id}\n\n" \
            f"Куратор {curator['full_name']} написал:\n" \
            f"{data['message']}"
-    await state.finish()
+    await state.reset_state(with_data=False)
 
     students = await db.get_users("Students")
     student = students[to_feedback - 1]
     chat_id = student["chat_id"]
 
-    try:
-        await bot.send_message(chat_id, text)
-        await db.check_answer(chat_id, homework_id)
-    except BotBlocked as ex:
-        print(ex)
+    answer = await db.get_answer(chat_id)
 
-    await call.message.edit_text("Сообщение было отправлено",
-                                 reply_markup=curator_kb)
+    try:
+        if not answer["checked"]:
+            await db.check_answer(chat_id, homework_id)
+            await bot.send_message(chat_id, text)
+
+            await call.message.edit_text("Сообщение было отправлено",
+                                         reply_markup=curator_kb)
+        else:
+            await call.message.edit_text("Ответ этого студента уже был проверен другим куратором",
+                                         reply_markup=curator_kb)
+    except BotBlocked:
+        await call.message.edit_text("Сообщение не было отправлено, так как этот студент заблокировал бота. "
+                                     "Однако задание было отмечено как проверенное",
+                                     reply_markup=curator_kb)
 
 
 @dp.callback_query_handler(curator_cd.filter(feature="menu"))

@@ -29,6 +29,9 @@ curator_kb = InlineKeyboardMarkup(
         ],
         [
             InlineKeyboardButton(text="Проверка заданий", callback_data=curator_cd.new("check_tasks"))
+        ],
+        [
+            InlineKeyboardButton(text="FAQ", callback_data=curator_cd.new("faq"))
         ]
     ]
 )
@@ -45,6 +48,9 @@ student_kb = InlineKeyboardMarkup(
             InlineKeyboardButton(text="Связь с куратором", callback_data=student_cd.new("connect_curator"))
         ],
         [
+            InlineKeyboardButton(text="Архив", callback_data=student_cd.new("archive"))
+        ],
+        [
             InlineKeyboardButton(text="FAQ", callback_data=student_cd.new("faq"))
         ]
     ]
@@ -54,7 +60,7 @@ homework_kb = InlineKeyboardMarkup(
     inline_keyboard=[
         [
             InlineKeyboardButton(text="Назад", callback_data=student_cd.new("education_program")),
-            InlineKeyboardButton(text="Написать ответ", callback_data=student_cd.new("input_homework"))
+            InlineKeyboardButton(text="Сдать домашнее задание", callback_data=student_cd.new("input_homework"))
         ]
     ]
 )
@@ -113,5 +119,25 @@ def education_program_kb(has_homework=True):
         kb.add(button_3)
     else:
         kb.add(button_3, button_2)
+
+    return kb
+
+
+def archive_lessons_kb(lesson_id, edge):
+    kb = InlineKeyboardMarkup()
+    button_1 = InlineKeyboardButton(text="Предыдущий", callback_data=student_cd.new("previous_archive"))
+    button_2 = InlineKeyboardButton(text="Следующий", callback_data=student_cd.new("next_archive"))
+    button_3 = InlineKeyboardButton(text="Назад", callback_data=student_cd.new("menu"))
+
+    if edge == 1:
+        pass
+    elif lesson_id == 1:
+        kb.add(button_2)
+    elif lesson_id == edge:
+        kb.add(button_1)
+    else:
+        kb.add(button_1, button_2)
+
+    kb.add(button_3)
 
     return kb
